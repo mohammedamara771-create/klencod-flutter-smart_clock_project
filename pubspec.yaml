@@ -1,0 +1,21 @@
+name: smart_clock
+description: ساعة ذكية بعدة نماذج وإشعار عند بداية كل ساعة
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_local_notifications: ^19.0.0
+  timezone: ^0.10.0
+  shared_preferences: ^2.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

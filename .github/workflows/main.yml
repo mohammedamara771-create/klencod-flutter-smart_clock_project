@@ -1,0 +1,80 @@
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.2
+          channel: stable
+          cache: true
+
+      - name: Generate android folder
+        run: |
+          cp lib/main.dart /tmp/main_backup.dart
+          cp pubspec.yaml /tmp/pubspec_backup.yaml
+          flutter create --platforms=android --project-name smart_clock .
+          cp /tmp/main_backup.dart lib/main.dart
+          cp /tmp/pubspec_backup.yaml pubspec.yaml
+
+      - name: Patch android for notifications
+        run: |
+          python3 - <<'EOF'
+          import os
+
+          # ---- AndroidManifest ----
+          mp = 'android/app/src/main/AndroidManifest.xml'
+          m = open(mp, encoding='utf-8').read()
+          perms = ('<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n'
+                   '    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>\n    ')
+          receivers = '''
+              <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"/>
+              <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+                  <intent-filter>
+                      <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                      <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                  </intent-filter>
+              </receiver>
+          '''
+          if 'POST_NOTIFICATIONS' not in m:
+              m = m.replace('<application', perms + '<application', 1)
+              m = m.replace('</application>', receivers + '</application>', 1)
+          open(mp, 'w', encoding='utf-8').write(m)
+
+          # ---- Gradle desugaring ----
+          kts = 'android/app/build.gradle.kts'
+          grv = 'android/app/build.gradle'
+          if os.path.exists(kts):
+              g = open(kts, encoding='utf-8').read()
+              g = g.replace('compileOptions {', 'compileOptions {\n        isCoreLibraryDesugaringEnabled = true', 1)
+              g += '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n'
+              open(kts, 'w', encoding='utf-8').write(g)
+          else:
+              g = open(grv, encoding='utf-8').read()
+              g = g.replace('compileOptions {', 'compileOptions {\n        coreLibraryDesugaringEnabled true', 1)
+              g += "\ndependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n}\n"
+              open(grv, 'w', encoding='utf-8').write(g)
+          EOF
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smart-clock-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
